@@ -7,6 +7,9 @@ from configparser import ConfigParser
 
 eyed3.log.setLevel("ERROR")
 
+debug = 1
+runLimit = 1000
+
 
 #######################
 
@@ -21,9 +24,10 @@ def search_files(directory='.', extension=''):
 				# get all MP3 tags for this file
 				songDict = mp3tags(songFile)
 				# add to dictionary of all files read with MP3 tag info
-				returnList.append(songDict)
-				fileCount += 1
-		if fileCount > 200:
+				if songDict:
+					returnList.append(songDict)
+					fileCount += 1
+		if runLimit and fileCount > runLimit:
 			break
 	return returnList
 
@@ -34,16 +38,19 @@ def mp3tags(songFile):
 	songDict = dict()
 	# get all MP3 tags for this file
 	audiofile = eyed3.load(songFile)
+	if not audiofile:
+		return None
 	songDict['title'] = audiofile.tag.title
 	songDict['artist'] = audiofile.tag.artist
 	songDict['album'] = audiofile.tag.artist
 	songDict['genre'] = str(audiofile.tag.genre)
 	if audiofile.tag.track_num:
 		songDict['track_number'] = str(audiofile.tag.track_num[0])
-	songDict['secs'] =  str(audiofile.info.time_secs)
-	if songDict['secs']:
-		 songDict['secs'] = int(float(songDict['secs']))	
-	songDict['bit_rate'] = str(audiofile.info.bit_rate[1])
+	if audiofile.info:
+		songDict['secs'] =  str(audiofile.info.time_secs)
+		if songDict['secs']:
+			songDict['secs'] = int(float(songDict['secs']))	
+		songDict['bit_rate'] = str(audiofile.info.bit_rate[1])
 	if audiofile.tag.comments:
 		songDict['comments'] = str(audiofile.tag.comments[0].text)
 	songDict['year'] = str(audiofile.tag.getBestDate())
@@ -54,11 +61,16 @@ def mp3tags(songFile):
 
 ###
 
-def populateGenres(conn, cur):
-	sql = "select genre_id, genre_name from genres"
-	cur.execute(sql)
-	return cur.fetchall()
+def populateGenres(conn):
+	sql = "select * from genres"
+	return getResults(conn, sql)
 
+
+###
+
+def populateArtists(conn):
+	sql = "select * from artists"
+	return getResults(conn, sql)
 
 ###
 
@@ -69,13 +81,28 @@ def returnGenreID(genreList, genreName):
 	i = 0
 	while i < len(genreList):
 		gDict = genreList[i] 
-		if gDict[1] == genreName:
-			returnId = gDict[0]
+		if gDict['genre_name'] == genreName:
+			returnId = gDict['genre_id']
 			break
 		i += 1
 
 	return returnId
 
+###
+
+def returnArtistID(artistList, artistName):
+
+	returnId = None
+	
+	i = 0
+	while i < len(artistList):
+		aDict = artistList[i]
+		if aDict['full_name'] == artistName:
+			returnId = aDict['artist_id']
+			break
+		i += 1
+
+	return returnId
 ###
 
 def config(filename='db.ini', section='postgresql'):
@@ -105,6 +132,27 @@ def connect():
 
 	return conn
 
+###
+
+def getResults(conn, sql, type='list'):
+	# type parameter refers to the desired data structure for return data
+	# 'list' : list of dictionaries, each dictionary using column names as key values
+	# 'scalar' : single value
+
+	returnSet = None	
+
+	cur = conn.cursor()
+	cur.execute(sql)
+	desc = cur.description
+	column_names = [col[0] for col in desc]
+
+	if type == 'list':
+		returnSet = [dict(zip(column_names, row)) for row in cur.fetchall()]
+	elif type == 'scalar':
+		returnSet = cur.fetchone()
+
+	return returnSet
+###
 
 
 #######################
@@ -112,11 +160,10 @@ def connect():
 musicDir = "/media/jskills/Toshiba-2TB/soul"
 
 conn = connect()
-cur = conn.cursor()
 
-genres = populateGenres(conn, cur)
+genres = populateGenres(conn)
+artists = populateArtists(conn)
 
-print(genres)
 
 songList = search_files(musicDir, '.mp3')
 
@@ -126,20 +173,61 @@ songList = search_files(musicDir, '.mp3')
 # lookup song/artist combo in songs table in DB
 
 
-
-
-
-
 i = 0
 while i < len(songList):
 	songDict = songList[i]
+	i += 1
 
-	#songDict[genre] looks like (42)Soul
+	#eyed3 genre : looks like (42)Soul
 	if songDict['genre']:
 		songDict['genre'] = re.sub('\([^()]*\)', '', songDict['genre'])
-		# lookup genreId
-		songDict['genre_id'] = returnGenreID(genres, songDict['genre'])
+	# lookup genreId
+	songDict['genre_id'] = returnGenreID(genres, songDict['genre'])
 
-	print(songDict)
-	
-	i += 1
+	if songDict['artist']:
+		songDict['artist_id'] = returnArtistID(artists, songDict['artist'])
+		if not songDict['artist_id']:
+			sql = "insert into artists (full_name, last_updated_by) values (%s, %s) returning artist_id"
+			cur = conn.cursor()
+			cur.execute(sql, (songDict['artist'], 'jskills'))
+			songDict['artist_id'] = cur.fetchone()[0]
+	else:
+		print("No MP3 tag for artist for " + str(songDict['filename']))
+		continue
+	if not  songDict['artist_id']:
+		print("No artist ID for " + str(songDict['filename']))
+		continue
+
+	# we have artist and genre so let's decide whether to insert a new song or update an existing one
+	sql = "select song_id from songs where file_path = %s"
+	cur = conn.cursor()
+	songDict['song_id'] = cur.execute(sql, (songDict['filename'],))
+	if songDict['song_id']:
+		# update song meta data
+		sql = "update songs set artist_id = %s, song_name = %s, file_path = %s, genre_id = %s, year = %s, "
+		sql += "comment = %s, last_updated_by = %s, album = %s, track_number = %s, bit_rate = %s where song_id = %s"
+		if debug:
+			print(sql)
+		else:
+			cur = conn.cursor()
+			cur.execute(sql, (songDict['artist_id'], songDict['song_name'], songDict['file_path'], songDict['genre_id'], songDict['year'], \
+					songDict['comment'], 'jskills', songDict['album'], songDict['track_number'], songDict['bit_rate'], songDict['song_id']))
+			
+	else:
+		# insert new song
+		sql = "insert into songs (song_id, artist_id, song_name, file_path, genre_id, year, comment, last_updated_by, album, track_number, bit_rate)"
+		sql += " values (DEFAULT, (%s,%s,%s,%s,%,s,%s,%s,%s,%s,%,s))"
+		if debug:
+			print(sql)
+		else:
+			cur = conn.cursor()
+			cur.execute(sql, (songDict['artist_id'], songDict['song_name'], songDict['file_path'], songDict['genre_id'], songDict['year'], \
+					songDict['comment'], 'jskills', songDict['album'], songDict['track_number'], songDict['bit_rate']))
+
+
+
+# now that we have ensured all existing songs and new songs are in the database, we should scan all songs and ensure the files are still on disk
+# if not, we should delete the record in the song table
+
+
+
