@@ -107,14 +107,14 @@ def mp3tags(songFile):
 ###
 
 def populateGenres(conn):
-	sql = "select * from genres"
+	sql = "select * from genre"
 	return getResults(conn, sql)
 
 
 ###
 
 def populateArtists(conn):
-	sql = "select * from artists"
+	sql = "select * from artist"
 	return getResults(conn, sql)
 
 ###
@@ -140,7 +140,7 @@ def returnArtistID(conn, artistName):
 	returnId = None
 
 	cur = conn.cursor()
-	sql = "select id from artists where full_name = %s"
+	sql = "select id from artist where full_name = %s"
 	try:
 		cur.execute(sql, (artistName,) )
 		returnId = cur.fetchone()
@@ -212,9 +212,9 @@ genres = populateGenres(conn)
 songList = search_files(musicDir, '.mp3')
 
 # look up song ID based on file name
-# look up artist in artists table in DB
+# look up artist in artist table in DB
 # if found use artist_id, if not insert new artist and use that ID
-# lookup song/artist combo in songs table in DB
+# lookup song/artist combo in song table in DB
 
 
 i = 0
@@ -232,7 +232,7 @@ while i < len(songList):
 	if songDict['artist']:
 		songDict['artist_id'] = returnArtistID(conn, songDict['artist'])
 		if not songDict['artist_id']:
-			sql = "insert into artists (full_name, last_updated_by) values (%s, %s) returning id"
+			sql = "insert into artist (full_name, last_updated_by) values (%s, %s) returning id"
 			try:
 				cur = conn.cursor()
 				cur.execute(sql, (songDict['artist'], 'jskills'))
@@ -247,7 +247,7 @@ while i < len(songList):
 		continue
 
 	# we have artist and genre so let's decide whether to insert a new song or update an existing one
-	sql = "select id from songs where file_path = (%s)"
+	sql = "select id from song where file_path = (%s)"
 	if debug:
 		print(sql + normalizeUnicode(songDict['filename']))
 	cur = conn.cursor()
@@ -269,7 +269,7 @@ while i < len(songList):
 
 	if songDict['song_id']:
 		# update song meta data
-		sql = "update songs set artist_id = %s, song_name = %s, file_path = %s, genre_id = %s, year = %s, last_updated_by = %s"
+		sql = "update song set artist_id = %s, song_name = %s, file_path = %s, genre_id = %s, year = %s, last_updated_by = %s"
 		if 'comment' in songDict.keys():
 			if songDict['comment'] and songDict['comment'] != 'None':
 				sql += ", comment = %s"
@@ -306,7 +306,7 @@ while i < len(songList):
 			
 	else:
 		# insert new song
-		sql1 = "insert into songs (artist_id, song_name, file_path, genre_id, year, last_updated_by"
+		sql1 = "insert into song (artist_id, song_name, file_path, genre_id, year, last_updated_by"
 		sql2 = " ) values (%s,%s,%s,%s,%s,%s"
 
 		if 'comment' in songDict.keys():
