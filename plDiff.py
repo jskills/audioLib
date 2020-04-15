@@ -5,13 +5,23 @@ import os
 # will take 2 playlist files (1) the crate of songs (2) the songs already played
 # and return a new crate file with played songs removed
 
+crateFile = None
+playedFile = None
 
 # read file from command line argument
-crateFile = sys.argv[1]
+try:
+	crateFile = sys.argv[1]
+except:
+	print("Usage : plDiff.py [crate_file] [played_file]")
+	sys.exit()
 if not os.path.exists(crateFile):
         print(crateFile + " does not exist")
         sys.exit()
-playedFile = sys.argv[2]
+try:
+	playedFile = sys.argv[2]
+except:
+	print("Usage : plDiff.py [crate_file] [played_file]")
+	sys.exit()
 if not os.path.exists(playedFile):
         print(playedFile + " does not exist")
         sys.exit()
