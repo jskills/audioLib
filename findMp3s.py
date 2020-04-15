@@ -3,14 +3,21 @@ import os
 import eyed3
 import psycopg2
 import re
+import string
 from configparser import ConfigParser
-import unicodedata
 from unidecode import unidecode
+import warnings
 
+warnings.simplefilter("ignore")
 eyed3.log.setLevel("ERROR")
 
 debug = 0
-runLimit = 1000
+runLimit = 0
+
+# if you need to debug
+#import pdb
+# then add this to where you want to set a break
+# pdb.set_trace()
 
 
 #######################
@@ -38,8 +45,18 @@ def search_files(directory='.', extension=''):
 ###
 
 def normalizeUnicode(s):
-	#return unicodedata.normalize('NFKD', s).encode('ascii', 'ignore')
-	return unidecode(s)
+	s = unidecode(s)
+	printable = set(string.printable)
+	s = ''.join(filter(lambda x: x in printable, s))
+	return s
+
+###
+
+def safe_cast(val, to_type, default=None):
+	try:
+		return to_type(val)
+	except (ValueError, TypeError):
+		return default
 
 ###
 
@@ -72,14 +89,18 @@ def mp3tags(songFile):
 		if str(audiofile.info.bit_rate[1]) != 'None':
 			songDict['bit_rate'] = str(audiofile.info.bit_rate[1])
 	if audiofile.tag.comments:
-		songDict['comment'] = str(audiofile.tag.comments[0].text)
+		try:
+			songDict['comment'] = str(audiofile.tag.comments[1].text)
+		except IndexError:
+			songDict['comment'] = str(audiofile.tag.comments[0].text)
 		songDict['comment'] = normalizeUnicode(songDict['comment'])
 	year = str(audiofile.tag.getBestDate())
 	songDict['year'] = year[0:4]
+	songDict['year'] = safe_cast(songDict['year'], int, '') 
 	if audiofile.tag.album:
 		songDict['album'] = str(audiofile.tag.album)
 		songDict['album'] = normalizeUnicode(songDict['album'])
-	songDict['filename'] = songFile
+	songDict['filename'] = normalizeUnicode(songFile)
 	
 	return songDict
 
@@ -106,7 +127,7 @@ def returnGenreID(genreList, genreName):
 	while i < len(genreList):
 		gDict = genreList[i] 
 		if gDict['genre_name'] == genreName:
-			returnId = gDict['genre_id']
+			returnId = gDict['id']
 			break
 		i += 1
 
@@ -116,11 +137,15 @@ def returnGenreID(genreList, genreName):
 
 def returnArtistID(conn, artistName):
 
+	returnId = None
+
 	cur = conn.cursor()
-	sql = "select artist_id from artists where full_name = %s"
-	print(sql + artistName)
-	cur.execute(sql, (artistName,) )
-	returnId = cur.fetchone()
+	sql = "select id from artists where full_name = %s"
+	try:
+		cur.execute(sql, (artistName,) )
+		returnId = cur.fetchone()
+	except:
+		returnId = None
 
 	return returnId
 ###
@@ -193,6 +218,7 @@ songList = search_files(musicDir, '.mp3')
 
 
 i = 0
+totalProcessed = 0
 while i < len(songList):
 	songDict = songList[i]
 	i += 1
@@ -206,10 +232,13 @@ while i < len(songList):
 	if songDict['artist']:
 		songDict['artist_id'] = returnArtistID(conn, songDict['artist'])
 		if not songDict['artist_id']:
-			sql = "insert into artists (full_name, last_updated_by) values (%s, %s) returning artist_id"
-			cur = conn.cursor()
-			cur.execute(sql, (songDict['artist'], 'jskills'))
-			songDict['artist_id'] = cur.fetchone()[0]
+			sql = "insert into artists (full_name, last_updated_by) values (%s, %s) returning id"
+			try:
+				cur = conn.cursor()
+				cur.execute(sql, (songDict['artist'], 'jskills'))
+				songDict['artist_id'] = cur.fetchone()[0]
+			except:
+				print("Cannot find or insert artist :" + normalizeUnicode(songDict['artist']))
 	else:
 		print("No MP3 tag for artist for " + str(songDict['filename']))
 		continue
@@ -218,12 +247,16 @@ while i < len(songList):
 		continue
 
 	# we have artist and genre so let's decide whether to insert a new song or update an existing one
-	sql = "select song_id from songs where file_path = (%s)"
-	print(sql + songDict['filename'])
+	sql = "select id from songs where file_path = (%s)"
+	if debug:
+		print(sql + normalizeUnicode(songDict['filename']))
 	cur = conn.cursor()
-	#import pdb; pdb.set_trace()
-	cur.execute(sql, (str(songDict['filename']),))
-	songDict['song_id'] = cur.fetchone()
+	try:
+		cur.execute(sql, (normalizeUnicode(songDict['filename']),))
+		songDict['song_id'] = cur.fetchone()
+	except:
+		print("Had to skip this one for now : " + normalizeUnicode(songDict['filename']))
+		continue
 
 	sqlList = list()
  	# these fields should always be present
@@ -254,17 +287,22 @@ while i < len(songList):
 				sql += ", bit_rate = %s"
 				sqlList.append(songDict['bit_rate'])
 		
-		sql += " where song_id = %s"
+		sql += " where id = %s"
 		sqlList.append(songDict['song_id'])
 
 		if debug:
 			print(sql)
-		else:
-			print(sql)
 			print(sqlList)
-			cur = conn.cursor()
-			cur.execute(sql, sqlList)
-			conn.commit()
+		else:
+			try:
+				cur = conn.cursor()
+				cur.execute(sql, sqlList)
+				conn.commit()
+			except:
+				print("Update failed for " + str(songDict['filename']))
+				print(sql)
+				print(sqlList)
+				continue
 			
 	else:
 		# insert new song
@@ -296,11 +334,21 @@ while i < len(songList):
 
 		if debug:
 			print(sql)
+			print(sqlList)
 		else:
-			cur = conn.cursor()
-			print(sql + str(sqlList))
-			cur.execute(sql, sqlList)
-			conn.commit()
+			try:
+				cur = conn.cursor()
+				cur.execute(sql, sqlList)
+				conn.commit()
+			except:
+				print("Insert failed for " + str(songDict['filename']))
+				print(sql)
+				print(sqlList)
+				continue
+
+	totalProcessed += 1
+
+print("Completed processing " + str(totalProcessed) + " files.")
 
 
 
