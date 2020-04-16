@@ -286,7 +286,8 @@ while i < len(songList):
 			if int(songDict['bit_rate']) > 0 and songDict['bit_rate'] != 'None':
 				sql += ", bit_rate = %s"
 				sqlList.append(songDict['bit_rate'])
-		
+	
+		sql += ", last_updated_date = now() "	
 		sql += " where id = %s"
 		sqlList.append(songDict['song_id'])
 
