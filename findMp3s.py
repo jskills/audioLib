@@ -202,7 +202,7 @@ def getResults(conn, sql, type='list'):
 
 #######################
 
-musicDir = "/media/jskills/Toshiba-2TB"
+musicDir = "/media/jskills/Toshiba-2TB/"
 
 conn = connect()
 
@@ -247,6 +247,8 @@ while i < len(songList):
 		continue
 
 	# we have artist and genre so let's decide whether to insert a new song or update an existing one
+	# remove musicDir from file_path prior to putting into the DB
+	songDict['filename'] = re.sub(musicDir,'', songDict['filename'])
 	sql = "select id from song where file_path = (%s)"
 	if debug:
 		print(sql + normalizeUnicode(songDict['filename']))
