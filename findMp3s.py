@@ -11,7 +11,7 @@ import warnings
 warnings.simplefilter("ignore")
 eyed3.log.setLevel("ERROR")
 
-debug = 0
+debug = False
 runLimit = 0
 
 # if you need to debug
@@ -38,8 +38,8 @@ def search_files(directory='.', extension=''):
 				if songDict:
 					returnList.append(songDict)
 					fileCount += 1
-		if runLimit and fileCount > runLimit:
-			break
+			if runLimit and fileCount > runLimit:
+				break
 	return returnList
 
 ###
@@ -101,8 +101,22 @@ def mp3tags(songFile):
 		songDict['album'] = str(audiofile.tag.album)
 		songDict['album'] = normalizeUnicode(songDict['album'])
 	songDict['filename'] = normalizeUnicode(songFile)
-	
+
 	return songDict
+
+###
+
+def writeCover(sDict):
+
+	sysCallText = 'eyeD3 --write-images=' + coverImageDir + ' "' + str(songDict['filename']) + '"'
+	os.system(sysCallText)
+	outFile = coverImageDir + "FRONT_COVER.jpg"
+	coverFile = str(songDict['song_id']) + ".jpg"
+	if os.path.exists(outFile):
+		sysCallText = 'mv ' + outFile + ' '  + coverImageDir + coverFile
+		print(sysCallText)
+		os.system(sysCallText)
+
 
 ###
 
@@ -143,7 +157,7 @@ def returnArtistID(conn, artistName):
 	sql = "select id from artist where full_name = %s"
 	try:
 		cur.execute(sql, (artistName,) )
-		returnId = cur.fetchone()
+		returnId = cur.fetchone()[0]
 	except:
 		returnId = None
 
@@ -203,6 +217,7 @@ def getResults(conn, sql, type='list'):
 #######################
 
 musicDir = "/media/jskills/Toshiba-2TB/"
+coverImageDir = musicDir + "cover_art/"
 
 conn = connect()
 
@@ -248,23 +263,23 @@ while i < len(songList):
 
 	# we have artist and genre so let's decide whether to insert a new song or update an existing one
 	# remove musicDir from file_path prior to putting into the DB
-	songDict['filename'] = re.sub(musicDir,'', songDict['filename'])
+	songDict['file_path'] = re.sub(musicDir,'', songDict['filename'])
 	sql = "select id from song where file_path = (%s)"
 	if debug:
-		print(sql + normalizeUnicode(songDict['filename']))
+		print(sql + normalizeUnicode(songDict['file_path']))
 	cur = conn.cursor()
 	try:
-		cur.execute(sql, (normalizeUnicode(songDict['filename']),))
-		songDict['song_id'] = cur.fetchone()
+		cur.execute(sql, (normalizeUnicode(songDict['file_path']),))
+		songDict['song_id'] = cur.fetchone()[0]
 	except:
-		print("Had to skip this one for now : " + normalizeUnicode(songDict['filename']))
+		print("Had to skip this one for now : " + normalizeUnicode(songDict['file_path']))
 		continue
 
 	sqlList = list()
  	# these fields should always be present
 	sqlList.append(songDict['artist_id'])
 	sqlList.append(songDict['title'])
-	sqlList.append(songDict['filename'])
+	sqlList.append(songDict['file_path'])
 	sqlList.append(songDict['genre_id'])
 	sqlList.append(songDict['year'])
 	sqlList.append('jskills')
@@ -333,7 +348,7 @@ while i < len(songList):
 				sql2 += ",%s"
 				sqlList.append(songDict['bit_rate'])
 		sql2 += ")"
-		sql = sql1 + sql2
+		sql = sql1 + sql2 + " RETURNIND id"
 
 		if debug:
 			print(sql)
@@ -342,12 +357,15 @@ while i < len(songList):
 			try:
 				cur = conn.cursor()
 				cur.execute(sql, sqlList)
+				songDict['song_id'] = cur.fetchone()[0]
 				conn.commit()
 			except:
 				print("Insert failed for " + str(songDict['filename']))
 				print(sql)
 				print(sqlList)
 				continue
+
+	writeCover(songDict)
 
 	totalProcessed += 1
 
@@ -357,6 +375,8 @@ print("Completed processing " + str(totalProcessed) + " files.")
 
 # now that we have ensured all existing songs and new songs are in the database, we should scan all songs and ensure the files are still on disk
 # if not, we should delete the record in the song table
+
+# also we need to cleanup all files in the cover images directory that do not start with a number (hence not the cover image for the song_id
 
 
 
