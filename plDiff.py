@@ -15,15 +15,15 @@ except:
 	print("Usage : plDiff.py [crate_file] [played_file]")
 	sys.exit()
 if not os.path.exists(crateFile):
-        print(crateFile + " does not exist")
+        print(crateFile + " does not exist", file=sys.stderr)
         sys.exit()
 try:
 	playedFile = sys.argv[2]
 except:
-	print("Usage : plDiff.py [crate_file] [played_file]")
+	print("Usage : plDiff.py [crate_file] [played_file]", file=sys.stderr)
 	sys.exit()
 if not os.path.exists(playedFile):
-        print(playedFile + " does not exist")
+        print(playedFile + " does not exist", file=sys.stderr)
         sys.exit()
 
 
@@ -41,13 +41,18 @@ keepers = list()
 # loop over the crate list
 #      loop over the played list
 #      if a line from crate list is not in played list, put into keep list
-i = 0
+
+i = crateCount = 0
+
+playedCount = len(playedText)
+
 while i < len(crateText):
 	if crateText[i][0] == "#":
 		i += 1
-		continue	
+		continue
+	else:
+		crateCount += 1
 	crateText[i] = crateText[i].replace('\\', '/')
-	#print ("ct : " + crateText[i])
 	j = 0
 	okFlag = 1
 	while j < len(playedText):
@@ -55,9 +60,8 @@ while i < len(crateText):
 			j += 1
 			continue	
 		playedText[j] = playedText[j].replace('\\', '\/')
-		#print ("pt : " + playedText[j])
 		if crateText[i] == playedText[j]:
-			#print("I should be booting this song : " + crateText[i])
+			#print("I should be booting this song : " + crateText[i], , file=sys.stderr)
 			okFlag = 0
 			j = len(playedText)
 			break
@@ -68,8 +72,11 @@ while i < len(crateText):
 	i += 1
 
 # print keep list as output
-
 i = 0
 while i < len(keepers):
 	print(keepers[i])
 	i += 1
+
+print("Just wrote " + str(i) + " records.", file=sys.stderr)
+print("Processed " + str(crateCount) + " songs in the crate file." , file=sys.stderr)
+print("Processed " + str(playedCount) + " songs in the played file." , file=sys.stderr)
