@@ -1,10 +1,13 @@
+import pdb
 import sys
 import os
+from os import path
 import eyed3
 import psycopg2
 import re
 import string
 import glob
+from datetime import datetime, timedelta
 from configparser import ConfigParser
 from unidecode import unidecode
 import warnings
@@ -14,6 +17,16 @@ eyed3.log.setLevel("ERROR")
 
 
 #######################
+
+def isOldFile(fileCheck):
+	dateCheck = datetime.now() - timedelta(days=8)
+	filetime = datetime.fromtimestamp(path.getctime(fileCheck))
+	if filetime < dateCheck:
+		return 1
+	else:
+		return 0
+
+###
 
 def search_files(directory='.', extension='', skip=None):
 	fileCount = 0
@@ -25,12 +38,15 @@ def search_files(directory='.', extension='', skip=None):
 		for name in files:
 			if extension and name.lower().endswith(extension):
 				songFile = os.path.join(dirpath, name)
-				# get all MP3 tags for this file
-				songDict = mp3tags(songFile)
-				# add to dictionary of all files read with MP3 tag info
-				if songDict:
-					returnList.append(songDict)
-					fileCount += 1
+				if isOldFile(songFile):
+					continue
+				else:
+					# get all MP3 tags for this file
+					songDict = mp3tags(songFile)
+					# add to dictionary of all files read with MP3 tag info
+					if songDict:
+						returnList.append(songDict)
+						fileCount += 1
 			if runLimit and fileCount > runLimit:
 				break
 	return returnList
@@ -101,10 +117,10 @@ def mp3tags(songFile):
 
 def writeCover(sDict):
 
-	sysCallText = 'eyeD3 --write-images=' + coverImageDir + ' "' + str(songDict['filename']) + '"'
+	sysCallText = 'eyeD3 --write-images=' + coverImageDir + ' "' + str(sDict['filename']) + '"'
 	os.system(sysCallText)
 	outFile = coverImageDir + "FRONT_COVER.jpg"
-	coverFile = str(songDict['song_id']) + ".jpg"
+	coverFile = str(sDict['song_id']) + ".jpg"
 	if os.path.exists(outFile):
 		sysCallText = 'mv ' + outFile + ' '  + coverImageDir + coverFile
 		print(sysCallText)
@@ -148,9 +164,11 @@ def returnArtistID(conn, artistName):
 
 	cur = conn.cursor()
 	sql = "select id from artist where full_name = %s"
+	#pdb.set_trace()
 	try:
 		cur.execute(sql, (artistName,) )
-		returnId = cur.fetchone()[0]
+		curReturn = cur.fetchone()
+		returnId = curReturn[0]
 	except:
 		returnId = None
 
@@ -235,6 +253,7 @@ def syncDB(songList, debug=False, runLimit=0):
 					songDict['artist_id'] = cur.fetchone()[0]
 				except:
 					print("Cannot find or insert artist :" + normalizeUnicode(songDict['artist']))
+					continue
 		else:
 			print("No MP3 tag for artist for " + str(songDict['filename']))
 			continue
@@ -244,17 +263,21 @@ def syncDB(songList, debug=False, runLimit=0):
 
 		# we have artist and genre so let's decide whether to insert a new song or update an existing one
 		# remove musicDir from file_path prior to putting into the DB
+
 		songDict['file_path'] = re.sub(musicDir,'', songDict['filename'])
+
 		sql = "select id from song where file_path = (%s)"
+
 		if debug:
 			print(sql + normalizeUnicode(songDict['file_path']))
+
 		cur = conn.cursor()
 		try:
 			cur.execute(sql, (normalizeUnicode(songDict['file_path']),))
 			songDict['song_id'] = cur.fetchone()[0]
 		except:
-			print("Had to skip this one for now : " + normalizeUnicode(songDict['file_path']))
-			continue
+			#print("Could not find this song : " + normalizeUnicode(songDict['file_path']))
+			songDict['song_id'] = None
 
 		sqlList = list()
  		# these fields should always be present
@@ -301,6 +324,7 @@ def syncDB(songList, debug=False, runLimit=0):
 					print("Update failed for " + str(songDict['filename']))
 					print(sql)
 					print(sqlList)
+					conn.rollback()
 					continue
 			
 		else:
@@ -329,7 +353,7 @@ def syncDB(songList, debug=False, runLimit=0):
 					sql2 += ",%s"
 					sqlList.append(songDict['bit_rate'])
 			sql2 += ")"
-			sql = sql1 + sql2 + " RETURNIND id"
+			sql = sql1 + sql2 + " RETURNING id"
 
 			if debug:
 				print(sql)
@@ -344,6 +368,7 @@ def syncDB(songList, debug=False, runLimit=0):
 					print("Insert failed for " + str(songDict['filename']))
 					print(sql)
 					print(sqlList)
+					conn.rollback()
 					continue
 
 		writeCover(songDict)
@@ -391,7 +416,7 @@ musicDir = "/media/jskills/Toshiba-2TB/"
 coverImageDir = musicDir + "cover_art/"
 
 # debug flag will result in printing SQL rather than doing any inserts / updates
-debug = True
+debug = False
 
 # set to halt after processing a certain number of records in dbSync, leave 0 to process all 
 runLimit = 0
@@ -401,15 +426,15 @@ excludeDir = "Kenans Treasure Chest"
 songList = search_files(musicDir, '.mp3', excludeDir)
 
 # synchronize database to reflect songs on disk
-#songsProcessed = syncDB(songList, debug, runLimit)
-#print("Completed processing " + str(songsProcessed) + " files.")
+songsProcessed = syncDB(songList, debug, runLimit)
+print("Completed processing " + str(songsProcessed) + " files.")
 
 
 # now that we have ensured all existing songs and new songs are in the database,
 # we should scan all songs and ensure the files are still on disk
 # if not, we should delete the record in the song table
-orphansProcessed = purgeOrphans(songList, debug)
-print("Removed " + str(orphansProcessed) + " orphaned DB records")
+#orphansProcessed = purgeOrphans(songList, debug)
+#print("Removed " + str(orphansProcessed) + " orphaned DB records")
 
 # also we need to cleanup all files in the cover images directory that do not start with a number
 # (hence not the cover image for the song_id)
