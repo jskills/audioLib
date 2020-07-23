@@ -1,3 +1,6 @@
 # audioLib
 Various tools to manage mp3 file data and
-Use of Postgres to store a music library
+use of Postgres to store a music library
+
+Accompanies this repo
+https://github.com/jskills/tuneBase
