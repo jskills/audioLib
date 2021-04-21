@@ -1,6 +1,7 @@
 import sys
 import os
 
+
 # 2 file names as args
 # will take 2 playlist files (1) the crate of songs (2) the songs already played
 # and return a new crate file with played songs removed
@@ -78,5 +79,5 @@ while i < len(keepers):
 	i += 1
 
 print("Just wrote " + str(i) + " records.", file=sys.stderr)
-print("Processed " + str(crateCount) + " songs in the crate file." , file=sys.stderr)
-print("Processed " + str(playedCount) + " songs in the played file." , file=sys.stderr)
+print("Processed " + str(crateCount) + " lines in the crate file." , file=sys.stderr)
+print("Processed " + str(playedCount) + " lines in the played file." , file=sys.stderr)
