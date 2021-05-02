@@ -127,3 +127,13 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# database config file
+db.ini
+
+# backup dir
+backup/
+
+# Youtube Music Auth info
+headers_auth.json
+
