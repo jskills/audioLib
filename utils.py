@@ -170,7 +170,7 @@ def getResults(conn, sql, type='list'):
 	# 'list' : list of dictionaries, each dictionary using column names as key values
 	# 'scalar' : single value
 
-	returnSet = None	
+	returnSet = None
 
 	cur = conn.cursor()
 	cur.execute(sql)

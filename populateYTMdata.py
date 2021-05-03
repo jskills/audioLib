@@ -1,20 +1,40 @@
 #!/usr/bin/env python
 
-from ytmusicapi.ytmusic import YTMusic
+import ast
+import os
+import sys
+import json
 from utils import *
 
+# Library file comes from a full dump of all of your Youtube Music songs
+# use this to produce :
+# https://github.com/jskills/M3U-to-Youtube-Music/blob/master/dumpLibrary.py
+
 debug = False
+libraryFile = None
 
-songLimit = 10
+if sys.argv[1:]:
+    libraryFile = sys.argv[1]
+else:
+    print("Usage : populateYTMdata.py [libraryfile.json]")
+    sys.exit()
 
-ytm = YTMusic('headers_auth.json')
+songList = list()
+try:
+    f = open(libraryFile) 
+    songList = f.readlines()
+    f.close()
+except:
+    print("Cannot open library file : " + str(libraryFile))
+    sys.exit()
 
-songList = ytm.get_library_upload_songs(limit=songLimit)
 
-conn = connect()
 
-for sl in songList:
-    #print(str(sl))
+i = 0
+
+for l in songList:
+    conn = connect()
+    sl = ast.literal_eval(l)
 
     sql = "select count(*) from ytm_song where video_id = '" + str(sl['videoId']) + "'"
     songFound = int(getResults(conn, sql, 'scalar'))
@@ -39,6 +59,10 @@ for sl in songList:
     sqlList.append(str(sl['duration']))
     sqlList.append('jskills')
 
+    i += 1
+
+    print("Processing record " + str(i))
+
     if not songFound:
         # insert new playlist
         sql1 = "insert into ytm_song (video_id, entity_id, title, artist_name, artist_id,"
@@ -56,10 +80,11 @@ for sl in songList:
                 cur.execute(sql, sqlList)
                 ytm_id = cur.fetchone()[0]
                 conn.commit()
-            except psycopg2.OperationalError as e:
+                print("Added : " + str(ytm_id) + " | " + str(sl['title']))
+            except:
                 print("Insert failed for : ")
                 print(sql)
                 print(sqlList)
-                raise e
                 continue
+    conn.close()
 
