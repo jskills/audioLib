@@ -175,7 +175,7 @@ def returnArtistID(conn, artistName):
 	return returnId
 ###
 
-def config(filename='db.ini', section='postgresql'):
+def config(filename='/home/jskills/src/audioLib/db.ini', section='postgresql'):
 	parser = ConfigParser()
 	parser.read(filename)
 

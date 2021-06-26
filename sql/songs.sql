@@ -6,7 +6,7 @@ CREATE TABLE songs
   album varchar(300) DEFAULT NULL,
   file_name varchar(100) NOT NULL,
   file_path varchar(300) NOT NULL,
-  genre varchar(50) NOT NULL,
+  genre_id smallint not null,
   track_number smallint DEFAULT NULL,
   year char(4) DEFAULT NULL,
   comment text DEFAULT NULL,
