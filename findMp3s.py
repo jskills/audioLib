@@ -110,6 +110,8 @@ def mp3tags(songFile):
 		songDict['album'] = str(audiofile.tag.album)
 		songDict['album'] = songDict['album'].replace(",", "")
 		songDict['album'] = songDict['album'].replace("/", "-")
+		songDict['album'] = songDict['album'].replace("!", "")
+		songDict['album'] = songDict['album'].replace("\?", "")
 		songDict['album'] = normalizeUnicode(songDict['album'])
 	songDict['filename'] = normalizeUnicode(songFile)
 
